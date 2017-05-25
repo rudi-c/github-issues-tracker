@@ -8,7 +8,7 @@ defmodule GithubIssuesTracker.CLI do
   table of the last _n_ issues in a github project
   """
 
-  def run(argv) do
+  def main(argv) do
     argv
       |> parse_args
       |> process
@@ -40,10 +40,28 @@ defmodule GithubIssuesTracker.CLI do
     System.halt(0)
   end
 
-  def process({user, project, _count}) do
-    GithubIssuesTracker.GithubIssues.fetch(user, project)
-    |> decode_response
-    |> sort_into_ascending_order
+  def process({user, project, count}) do
+    data =
+      GithubIssuesTracker.GithubIssues.fetch(user, project)
+      |> decode_response
+      |> sort_into_ascending_order
+      |> Enum.take(count)
+      |> Enum.map(fn issue -> extract(issue) end)
+
+    # TODO: Could make this generic
+    max_id_len = Enum.max(Enum.map(data, fn {id, _, _} -> String.length("#{id}") end))
+    max_time_len = Enum.max(Enum.map(data, fn {_, time, _} -> String.length(time) end))
+    # max_title_len = Enum.max(Enum.map(data, fn {_, _, title} -> String.length(title) end))
+
+    # TODO: Make table header
+    data |> Enum.map(fn {id, created_at, title} ->
+      right_pad("#{id}", max_id_len)
+      <> " | "
+      <> right_pad(created_at, max_time_len)
+      <> " | "
+      <> title
+    end)
+    |> Enum.each(fn row -> IO.puts row end)
   end
 
   def decode_response({:ok, body}), do: body
@@ -56,5 +74,13 @@ defmodule GithubIssuesTracker.CLI do
   def sort_into_ascending_order(list_of_issues) do
     Enum.sort list_of_issues,
               fn i1, i2 -> Map.get(i1, "created_at") <= Map.get(i2, "created_at") end
+  end
+
+  def right_pad(str, len) do
+    str <> String.duplicate(" ", len - String.length(str))
+  end
+
+  def extract(issue) do
+    { Map.get(issue, "id"), Map.get(issue, "created_at"), Map.get(issue, "title") }
   end
 end
